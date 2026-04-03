@@ -46,16 +46,18 @@ app.get("/ping", (_req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    service: "mc-monitor-server",
-    message: "Use GET /api/v1/status",
-    endpoints: ["/ping", "/api/v1/health", "/api/v1/status", "/api/v1/meta"]
+if (c.NODE_ENV !== "production") {
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      service: "mc-monitor-server",
+      message: "Use GET /api/v1/status",
+      endpoints: ["/ping", "/api/v1/health", "/api/v1/status", "/api/v1/meta"]
+    });
   });
-});
-app.head("/", (_req, res) => {
-  res.status(200).end();
-});
+  app.head("/", (_req, res) => {
+    res.status(200).end();
+  });
+}
 
 app.use("/api/v1", apiV1Router);
 
