@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CheckRecord {
+  id            String      @id @default(cuid())
+  createdAt     DateTime    @default(now())
+  online        Boolean
+  playersOnline Int?
+  playersMax    Int?
+  pingMs        Int?
+  source        CheckSource @default(poll)
+
+  @@index([createdAt(sort: Desc)])
+}
+
+enum CheckSource {
+  poll
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  username  String   @db.VarChar(32)
+  message   String   @db.VarChar(2000)
+
+  @@index([createdAt(sort: Asc)])
+}
