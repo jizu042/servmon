@@ -10,6 +10,14 @@ import { getStatusCache } from "../services/cache.js";
 
 const router = Router();
 
+const addressQuery = z.object({
+  address: z
+    .string()
+    .min(1)
+    .regex(/^[a-zA-Z0-9.-]+(?::\d{1,5})?$/, "address must be host:port or host")
+    .optional()
+});
+
 router.get("/health", (_req, res) => {
   const c = loadConfig();
   sendOk(res, 200, {
@@ -21,9 +29,14 @@ router.get("/health", (_req, res) => {
 
 router.get("/meta", (_req, res) => {
   const c = loadConfig();
+  const parsed = addressQuery.safeParse(_req.query);
+  if (!parsed.success) {
+    return sendErr(res, 400, "BAD_QUERY", "Invalid query", parsed.error.flatten());
+  }
+  const targetAddress = parsed.data.address || c.MONITOR_ADDRESS;
   sendOk(res, 200, {
     displayName: c.SERVER_DISPLAY_NAME,
-    addressMasked: maskAddress(c.MONITOR_ADDRESS)
+    addressMasked: maskAddress(targetAddress)
   });
 });
 
@@ -38,15 +51,20 @@ router.get("/meta/reveal", (req, res) => {
 
 router.get("/status", async (_req, res) => {
   const c = loadConfig();
+  const parsed = addressQuery.safeParse(_req.query);
+  if (!parsed.success) {
+    return sendErr(res, 400, "BAD_QUERY", "Invalid query", parsed.error.flatten());
+  }
+  const targetAddress = parsed.data.address || c.MONITOR_ADDRESS;
   const cache = getStatusCache();
-  const key = "status:v2";
+  const key = `status:v2:${targetAddress}`;
   const hit = cache.get<unknown>(key);
   if (hit) {
     return sendOk(res, 200, hit as Record<string, unknown>);
   }
   try {
-    const snap = await resolveMonitorStatus(c.MONITOR_ADDRESS);
-    const brand = await getCachedBranding(c.MONITOR_ADDRESS);
+    const snap = await resolveMonitorStatus(targetAddress);
+    const brand = await getCachedBranding(targetAddress);
     const icon = snap.iconDataUrl || brand.faviconUrl || null;
     const payload = {
       online: snap.online,

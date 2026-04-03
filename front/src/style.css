@@ -371,3 +371,13 @@ body::before {
 .mono {
   font-family: var(--mono);
 }
+
+.settings-form {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+}

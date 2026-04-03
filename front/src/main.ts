@@ -6,6 +6,8 @@ import {
   fetchChat,
   postChat,
   skinUrl,
+  getApiSettings,
+  updateApiSettings,
   type StatusResponse,
   type ChatRow
 } from "./api.js";
@@ -18,6 +20,10 @@ let skinviewLoading = false;
 let skinviewReady = false;
 /** eslint-disable @typescript-eslint/no-explicit-any */
 let activeSkinViewer: any = null;
+
+function isValidTargetAddress(v: string) {
+  return /^[a-zA-Z0-9.-]+(?::\d{1,5})?$/.test(v);
+}
 
 function el(html: string) {
   const t = document.createElement("template");
@@ -274,6 +280,7 @@ async function main() {
         <div class="actions">
           <button type="button" class="btn" id="btnNotify">Уведомления</button>
           <button type="button" class="btn" id="btnHistory">История проверок</button>
+          <button type="button" class="btn" id="btnSettings">Настройки</button>
         </div>
       </header>
 
@@ -321,18 +328,78 @@ async function main() {
         <canvas id="skinCanvas" width="280" height="340"></canvas>
       </div>
     </dialog>
+
+    <dialog id="settingsModal" class="modal">
+      <div class="modal-inner">
+        <header class="modal-head"><h2>Настройки</h2><button type="button" class="btn" id="settingsClose">✕</button></header>
+        <form id="settingsForm" class="settings-form">
+          <label class="settings-field">
+            <span class="lbl">API Base URL</span>
+            <input id="setApiBase" class="inp" placeholder="https://your-api.onrender.com" />
+          </label>
+          <label class="settings-field">
+            <span class="lbl">Целевой адрес сервера</span>
+            <input id="setAddress" class="inp" placeholder="play.example.com:25565" />
+          </label>
+          <p class="muted">Если пусто — используются значения сервера по умолчанию.</p>
+          <div class="actions">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="button" class="btn" id="settingsReset">Сбросить</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
   `)
   );
 
-  try {
-    const meta = await fetchMeta();
-    const t = document.getElementById("displayTitle");
-    const a = document.getElementById("addrMasked");
-    if (t) t.textContent = meta.displayName;
-    if (a) a.textContent = meta.addressMasked;
-  } catch {
-    /* ignore */
+  async function refreshMeta() {
+    try {
+      const meta = await fetchMeta();
+      const t = document.getElementById("displayTitle");
+      const a = document.getElementById("addrMasked");
+      if (t) t.textContent = meta.displayName;
+      if (a) a.textContent = meta.addressMasked;
+    } catch {
+      /* ignore */
+    }
   }
+
+  await refreshMeta();
+
+  const settings = getApiSettings();
+  const setApiBase = document.getElementById("setApiBase") as HTMLInputElement | null;
+  const setAddress = document.getElementById("setAddress") as HTMLInputElement | null;
+  if (setApiBase) setApiBase.value = settings.apiBaseUrl;
+  if (setAddress) setAddress.value = settings.monitorAddress;
+
+  document.getElementById("btnSettings")?.addEventListener("click", () => {
+    (document.getElementById("settingsModal") as HTMLDialogElement).showModal();
+  });
+  document.getElementById("settingsClose")?.addEventListener("click", () => {
+    (document.getElementById("settingsModal") as HTMLDialogElement).close();
+  });
+  document.getElementById("settingsReset")?.addEventListener("click", () => {
+    updateApiSettings({ apiBaseUrl: "", monitorAddress: "" });
+    if (setApiBase) setApiBase.value = "";
+    if (setAddress) setAddress.value = "";
+  });
+
+  document.getElementById("settingsForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const apiBase = (setApiBase?.value || "").trim();
+    const address = (setAddress?.value || "").trim();
+    if (address && !isValidTargetAddress(address)) {
+      const hint = document.getElementById("hint");
+      if (hint) hint.textContent = "Некорректный адрес. Формат: host или host:port";
+      return;
+    }
+    updateApiSettings({ apiBaseUrl: apiBase, monitorAddress: address });
+    lastChatIso = null;
+    await refreshMeta();
+    await tick();
+    await tickChat();
+    (document.getElementById("settingsModal") as HTMLDialogElement).close();
+  });
 
   let histPage = 1;
   let histTotalPages = 1;
