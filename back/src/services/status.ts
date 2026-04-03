@@ -60,7 +60,7 @@ export function computeOnline(args: {
   if (tcp === true && validPlayers) {
     return { online: true, reason: "tcp_ok" };
   }
-  if (upstreamOnline === true && validPlayers && tcp !== false) {
+  if (upstreamOnline === true && validPlayers) {
     return { online: true, reason: "upstream_ok" };
   }
   return { online: false, reason: "insufficient_signals" };
