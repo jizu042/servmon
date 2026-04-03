@@ -375,9 +375,56 @@ body::before {
 .settings-form {
   display: grid;
   gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .settings-field {
   display: grid;
   gap: 6px;
+}
+
+.settings-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .settings-grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-flags {
+  display: grid;
+  gap: 8px;
+}
+
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.settings-sheet {
+  padding: 14px 16px;
+}
+
+.settings-summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-size: 1.05rem;
+  user-select: none;
+}
+
+.settings-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-sheet[open] .settings-summary {
+  color: var(--text);
 }

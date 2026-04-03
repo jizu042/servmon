@@ -12,8 +12,59 @@ import {
   type ChatRow
 } from "./api.js";
 
-const POLL_MS = 10_000;
-const CHAT_POLL_MS = 2500;
+const UI_SETTINGS_KEY = "mc-monitor.ui-settings.v1";
+
+type UiSettings = {
+  statusPollSec: number;
+  chatPollSec: number;
+  historyPageSize: number;
+  autoRefresh: boolean;
+  notifyEnabled: boolean;
+  showBackground: boolean;
+  enableSkinPreview: boolean;
+};
+
+const defaultUiSettings: UiSettings = {
+  statusPollSec: 10,
+  chatPollSec: 3,
+  historyPageSize: 20,
+  autoRefresh: true,
+  notifyEnabled: false,
+  showBackground: true,
+  enableSkinPreview: true
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeUiSettings(raw: Partial<UiSettings>): UiSettings {
+  return {
+    statusPollSec: clamp(Number(raw.statusPollSec || defaultUiSettings.statusPollSec), 5, 300),
+    chatPollSec: clamp(Number(raw.chatPollSec || defaultUiSettings.chatPollSec), 1, 60),
+    historyPageSize: clamp(Number(raw.historyPageSize || defaultUiSettings.historyPageSize), 5, 100),
+    autoRefresh: raw.autoRefresh ?? defaultUiSettings.autoRefresh,
+    notifyEnabled: raw.notifyEnabled ?? defaultUiSettings.notifyEnabled,
+    showBackground: raw.showBackground ?? defaultUiSettings.showBackground,
+    enableSkinPreview: raw.enableSkinPreview ?? defaultUiSettings.enableSkinPreview
+  };
+}
+
+function loadUiSettings(): UiSettings {
+  try {
+    const raw = localStorage.getItem(UI_SETTINGS_KEY);
+    if (!raw) return { ...defaultUiSettings };
+    return normalizeUiSettings(JSON.parse(raw) as Partial<UiSettings>);
+  } catch {
+    return { ...defaultUiSettings };
+  }
+}
+
+function saveUiSettings(next: UiSettings) {
+  localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(next));
+}
+
+let uiSettings = loadUiSettings();
 
 let lastChatIso: string | null = null;
 let skinviewLoading = false;
@@ -182,7 +233,7 @@ function renderStatus(data: StatusResponse) {
   }
   if (ver) ver.textContent = data.version ? `Версия ${data.version}` : "";
 
-  applyBackground(data.branding.backgroundUrl);
+  applyBackground(uiSettings.showBackground ? data.branding.backgroundUrl : null);
 
   const list = document.getElementById("playerChips");
   if (list) {
@@ -195,8 +246,15 @@ function renderStatus(data: StatusResponse) {
         </button>
       `) as HTMLButtonElement;
       const cvs = chip.querySelector("canvas");
-      if (cvs) void drawHead(cvs, name);
-      chip.addEventListener("click", () => void openSkinModal(name));
+      if (uiSettings.enableSkinPreview) {
+        if (cvs) void drawHead(cvs, name);
+        chip.addEventListener("click", () => void openSkinModal(name));
+      } else {
+        if (cvs) {
+          cvs.style.display = "none";
+        }
+        chip.style.padding = "8px 12px";
+      }
       list.appendChild(chip);
     }
   }
@@ -311,6 +369,49 @@ async function main() {
         </form>
       </section>
 
+      <details id="settingsPanel" class="card settings-sheet">
+        <summary class="settings-summary">Настройки · API · мониторинг · интерфейс</summary>
+        <form id="settingsForm" class="settings-form">
+          <label class="settings-field">
+            <span class="lbl">API Base URL</span>
+            <input id="setApiBase" class="inp" placeholder="https://your-api.onrender.com" />
+          </label>
+          <label class="settings-field">
+            <span class="lbl">Целевой адрес сервера</span>
+            <input id="setAddress" class="inp" placeholder="play.example.com:25565" />
+          </label>
+
+          <div class="settings-grid2">
+            <label class="settings-field">
+              <span class="lbl">Опрос статуса (сек)</span>
+              <input id="setStatusSec" class="inp" type="number" min="5" max="300" step="1" />
+            </label>
+            <label class="settings-field">
+              <span class="lbl">Опрос чата (сек)</span>
+              <input id="setChatSec" class="inp" type="number" min="1" max="60" step="1" />
+            </label>
+          </div>
+
+          <label class="settings-field">
+            <span class="lbl">Элементов в истории</span>
+            <input id="setHistoryLimit" class="inp" type="number" min="5" max="100" step="1" />
+          </label>
+
+          <div class="settings-flags">
+            <label class="chk"><input id="setAutoRefresh" type="checkbox" /> Автообновление</label>
+            <label class="chk"><input id="setNotify" type="checkbox" /> Уведомления о переходе в онлайн</label>
+            <label class="chk"><input id="setShowBg" type="checkbox" /> Фоновая картинка сервера</label>
+            <label class="chk"><input id="setSkinPreview" type="checkbox" /> Превью скинов игроков</label>
+          </div>
+
+          <p class="muted">Если API/адрес пустые — используются серверные значения по умолчанию.</p>
+          <div class="actions">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="button" class="btn" id="settingsReset">Сбросить</button>
+          </div>
+        </form>
+      </details>
+
       <p id="hint" class="muted foot"></p>
     </div>
 
@@ -329,26 +430,6 @@ async function main() {
       </div>
     </dialog>
 
-    <dialog id="settingsModal" class="modal">
-      <div class="modal-inner">
-        <header class="modal-head"><h2>Настройки</h2><button type="button" class="btn" id="settingsClose">✕</button></header>
-        <form id="settingsForm" class="settings-form">
-          <label class="settings-field">
-            <span class="lbl">API Base URL</span>
-            <input id="setApiBase" class="inp" placeholder="https://your-api.onrender.com" />
-          </label>
-          <label class="settings-field">
-            <span class="lbl">Целевой адрес сервера</span>
-            <input id="setAddress" class="inp" placeholder="play.example.com:25565" />
-          </label>
-          <p class="muted">Если пусто — используются значения сервера по умолчанию.</p>
-          <div class="actions">
-            <button type="submit" class="btn btn-primary">Сохранить</button>
-            <button type="button" class="btn" id="settingsReset">Сбросить</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
   `)
   );
 
@@ -369,46 +450,112 @@ async function main() {
   const settings = getApiSettings();
   const setApiBase = document.getElementById("setApiBase") as HTMLInputElement | null;
   const setAddress = document.getElementById("setAddress") as HTMLInputElement | null;
-  if (setApiBase) setApiBase.value = settings.apiBaseUrl;
-  if (setAddress) setAddress.value = settings.monitorAddress;
+  const setStatusSec = document.getElementById("setStatusSec") as HTMLInputElement | null;
+  const setChatSec = document.getElementById("setChatSec") as HTMLInputElement | null;
+  const setHistoryLimit = document.getElementById("setHistoryLimit") as HTMLInputElement | null;
+  const setAutoRefresh = document.getElementById("setAutoRefresh") as HTMLInputElement | null;
+  const setNotify = document.getElementById("setNotify") as HTMLInputElement | null;
+  const setShowBg = document.getElementById("setShowBg") as HTMLInputElement | null;
+  const setSkinPreview = document.getElementById("setSkinPreview") as HTMLInputElement | null;
+  const btnNotify = document.getElementById("btnNotify") as HTMLButtonElement | null;
+  const settingsPanel = document.getElementById("settingsPanel") as HTMLDetailsElement | null;
+
+  function syncNotifyLabel() {
+    if (!btnNotify) return;
+    btnNotify.textContent = uiSettings.notifyEnabled ? "Уведомления: вкл" : "Уведомления: выкл";
+  }
+
+  function syncSettingsForm() {
+    if (setApiBase) setApiBase.value = settings.apiBaseUrl;
+    if (setAddress) setAddress.value = settings.monitorAddress;
+    if (setStatusSec) setStatusSec.value = String(uiSettings.statusPollSec);
+    if (setChatSec) setChatSec.value = String(uiSettings.chatPollSec);
+    if (setHistoryLimit) setHistoryLimit.value = String(uiSettings.historyPageSize);
+    if (setAutoRefresh) setAutoRefresh.checked = uiSettings.autoRefresh;
+    if (setNotify) setNotify.checked = uiSettings.notifyEnabled;
+    if (setShowBg) setShowBg.checked = uiSettings.showBackground;
+    if (setSkinPreview) setSkinPreview.checked = uiSettings.enableSkinPreview;
+    syncNotifyLabel();
+  }
+
+  syncSettingsForm();
 
   document.getElementById("btnSettings")?.addEventListener("click", () => {
-    (document.getElementById("settingsModal") as HTMLDialogElement).showModal();
-  });
-  document.getElementById("settingsClose")?.addEventListener("click", () => {
-    (document.getElementById("settingsModal") as HTMLDialogElement).close();
+    if (settingsPanel) {
+      settingsPanel.open = true;
+      settingsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
   document.getElementById("settingsReset")?.addEventListener("click", () => {
     updateApiSettings({ apiBaseUrl: "", monitorAddress: "" });
-    if (setApiBase) setApiBase.value = "";
-    if (setAddress) setAddress.value = "";
+    settings.apiBaseUrl = "";
+    settings.monitorAddress = "";
+    uiSettings = { ...defaultUiSettings };
+    saveUiSettings(uiSettings);
+    syncSettingsForm();
+    restartPolling();
+    lastChatIso = null;
+    void refreshMeta();
+    void tick();
+    void tickChat();
   });
 
   document.getElementById("settingsForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const apiBase = (setApiBase?.value || "").trim();
     const address = (setAddress?.value || "").trim();
+    const statusPollSec = clamp(Number(setStatusSec?.value || uiSettings.statusPollSec), 5, 300);
+    const chatPollSec = clamp(Number(setChatSec?.value || uiSettings.chatPollSec), 1, 60);
+    const historyPageSize = clamp(Number(setHistoryLimit?.value || uiSettings.historyPageSize), 5, 100);
+    const autoRefresh = Boolean(setAutoRefresh?.checked);
+    const notifyEnabled = Boolean(setNotify?.checked);
+    const showBackground = Boolean(setShowBg?.checked);
+    const enableSkinPreview = Boolean(setSkinPreview?.checked);
+
     if (address && !isValidTargetAddress(address)) {
       const hint = document.getElementById("hint");
       if (hint) hint.textContent = "Некорректный адрес. Формат: host или host:port";
       return;
     }
+
+    let notifyFinal = notifyEnabled;
+    if (notifyEnabled && "Notification" in window && Notification.permission !== "granted") {
+      const p = await Notification.requestPermission();
+      notifyFinal = p === "granted";
+    }
+
     updateApiSettings({ apiBaseUrl: apiBase, monitorAddress: address });
+    settings.apiBaseUrl = apiBase;
+    settings.monitorAddress = address;
+    uiSettings = normalizeUiSettings({
+      statusPollSec,
+      chatPollSec,
+      historyPageSize,
+      autoRefresh,
+      notifyEnabled: notifyFinal,
+      showBackground,
+      enableSkinPreview
+    });
+    saveUiSettings(uiSettings);
+    if (setNotify) setNotify.checked = uiSettings.notifyEnabled;
+    syncNotifyLabel();
+
     lastChatIso = null;
     await refreshMeta();
     await tick();
     await tickChat();
-    (document.getElementById("settingsModal") as HTMLDialogElement).close();
+    restartPolling();
+    if (settingsPanel) settingsPanel.open = false;
   });
 
   let histPage = 1;
   let histTotalPages = 1;
 
   async function loadHistory() {
-    let data = await fetchHistory(histPage);
+    let data = await fetchHistory(histPage, uiSettings.historyPageSize);
     if (data.totalPages >= 1 && histPage > data.totalPages) {
       histPage = data.totalPages;
-      data = await fetchHistory(histPage);
+      data = await fetchHistory(histPage, uiSettings.historyPageSize);
     }
     histTotalPages = data.totalPages;
     const body = document.getElementById("histBody");
@@ -460,18 +607,20 @@ async function main() {
     await tickChat();
   });
 
-  let notifyOn = false;
   document.getElementById("btnNotify")?.addEventListener("click", async () => {
     if (!("Notification" in window)) return;
-    if (notifyOn) {
-      notifyOn = false;
-      (document.getElementById("btnNotify") as HTMLButtonElement).textContent = "Уведомления: выкл";
+    if (uiSettings.notifyEnabled) {
+      uiSettings.notifyEnabled = false;
+      if (setNotify) setNotify.checked = false;
+      saveUiSettings(uiSettings);
+      syncNotifyLabel();
       return;
     }
     const p = await Notification.requestPermission();
-    notifyOn = p === "granted";
-    (document.getElementById("btnNotify") as HTMLButtonElement).textContent =
-      notifyOn ? "Уведомления: вкл" : "Уведомления: выкл";
+    uiSettings.notifyEnabled = p === "granted";
+    if (setNotify) setNotify.checked = uiSettings.notifyEnabled;
+    saveUiSettings(uiSettings);
+    syncNotifyLabel();
   });
 
   let lastOnline = false;
@@ -484,7 +633,7 @@ async function main() {
       renderStatus(data);
       const hint = document.getElementById("hint");
       if (hint) hint.textContent = `Обновлено ${new Date().toLocaleTimeString()} · ${data.onlineReason}`;
-      if (notifyOn && "Notification" in window && Notification.permission === "granted") {
+      if (uiSettings.notifyEnabled && "Notification" in window && Notification.permission === "granted") {
         if (!lastOnline && data.online) {
           new Notification("Сервер в сети", { body: data.motd || "" });
         }
@@ -496,10 +645,30 @@ async function main() {
     }
   }
 
+  let statusTimer: number | null = null;
+  let chatTimer: number | null = null;
+
+  function restartPolling() {
+    if (statusTimer !== null) {
+      window.clearInterval(statusTimer);
+      statusTimer = null;
+    }
+    if (chatTimer !== null) {
+      window.clearInterval(chatTimer);
+      chatTimer = null;
+    }
+    if (!uiSettings.autoRefresh) return;
+    statusTimer = window.setInterval(() => {
+      void tick();
+    }, uiSettings.statusPollSec * 1000);
+    chatTimer = window.setInterval(() => {
+      void tickChat();
+    }, uiSettings.chatPollSec * 1000);
+  }
+
   await tick();
-  setInterval(tick, POLL_MS);
   await tickChat();
-  setInterval(tickChat, CHAT_POLL_MS);
+  restartPolling();
   setInterval(() => {
     const uptime = document.getElementById("uptimeLine");
     if (!uptime || !lastSnap) return;

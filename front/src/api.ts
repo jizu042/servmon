@@ -92,8 +92,8 @@ export async function fetchMeta(): Promise<{ displayName: string; addressMasked:
   return json.data;
 }
 
-export async function fetchHistory(page: number) {
-  const res = await fetch(withParams("/api/v1/history/checks", { page: String(page), limit: "20" }));
+export async function fetchHistory(page: number, limit = 20) {
+  const res = await fetch(withParams("/api/v1/history/checks", { page: String(page), limit: String(limit) }));
   const json = (await res.json()) as { success: boolean; data?: unknown };
   if (!res.ok || !json.success) throw new Error("history");
   return json.data as {
